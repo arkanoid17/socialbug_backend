@@ -13,7 +13,7 @@ import com.arka.socialbug.util.EncryptDecryptConverter;
 
 @Entity
 @Table(name = "social_connections", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"user_id", "platform"})
+        @UniqueConstraint(columnNames = {"user_id", "platform", "external_user_id"})
 })
 @Data
 @NoArgsConstructor

@@ -3,6 +3,7 @@ package com.arka.socialbug.repository;
 import com.arka.socialbug.model.SocialConnection;
 import com.arka.socialbug.model.SocialConnectionStatus;
 import com.arka.socialbug.model.SocialPlatform;
+import com.arka.socialbug.model.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,8 @@ public interface SocialConnectionRepository extends JpaRepository<SocialConnecti
     List<SocialConnection> findByPlatformAndStatus(SocialPlatform platform, SocialConnectionStatus status);
     List<SocialConnection> findByStatusAndExpiresAtBefore(SocialConnectionStatus status, Instant before);
     Page<SocialConnection> findByUser_IdAndStatus(Long userId, SocialConnectionStatus status, Pageable pageable);
+    Optional<SocialConnection> findByUserIdAndPlatform(Long userId, SocialPlatform platform);
+    Optional<SocialConnection> findByUser_IdAndPlatformAndExternalUserId(Long id, SocialPlatform platform, String externalId);
+
+    Optional<SocialConnection> findByUserAndPlatformAndExternalUserId(User user, SocialPlatform platform, String externalId);
 }

@@ -4,6 +4,7 @@ import com.arka.socialbug.dto.SocialProfile;
 import com.arka.socialbug.dto.TokenResponse;
 import com.arka.socialbug.model.SocialPlatform;
 
+import java.util.List;
 import java.util.Set;
 
 public interface OAuthProvider {
@@ -17,5 +18,5 @@ public interface OAuthProvider {
 
     TokenResponse refresh(String refreshToken);
 
-    SocialProfile fetchProfile(String accessToken);
+    List<SocialProfile> fetchProfile(String accessToken);
 }

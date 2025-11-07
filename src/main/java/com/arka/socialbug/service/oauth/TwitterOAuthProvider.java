@@ -9,6 +9,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 @Component
@@ -62,7 +63,7 @@ public class TwitterOAuthProvider implements OAuthProvider {
     }
 
     @Override
-    public SocialProfile fetchProfile(String accessToken) {
+    public List<SocialProfile> fetchProfile(String accessToken) {
         throw new UnsupportedOperationException("Implement Twitter profile fetch");
     }
 }

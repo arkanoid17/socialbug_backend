@@ -24,7 +24,7 @@ public class SocialConnectionController {
     }
 
     @PostMapping("/{platform}/callback")
-    public ResponseEntity<SocialConnectionResponse> callback(@PathVariable("platform") SocialPlatform platform,
+    public ResponseEntity<List<SocialConnectionResponse>> callback(@PathVariable("platform") SocialPlatform platform,
                                                              @RequestBody ConnectRequest request) {
         return ResponseEntity.ok(connectionService.handleCallback(platform, request));
     }

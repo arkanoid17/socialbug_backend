@@ -13,6 +13,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 @Component
@@ -108,32 +109,11 @@ public class InstagramOAuthProvider implements OAuthProvider {
         return new TokenResponse(access, null, tokenType, expiresIn, null);
     }
 
-//    @Override
-//    public SocialProfile fetchProfile(String accessToken) {
-//        String igMeEndpoint = "https://graph.instagram.com/me";
-//        URI uri = UriComponentsBuilder.fromHttpUrl(igMeEndpoint)
-//                .queryParam("fields", "id,username")
-//                .queryParam("access_token", accessToken)
-//                .build(true).toUri();
-//
-//        java.util.Map resp = restClient.get()
-//                .uri(uri)
-//                .retrieve()
-//                .body(java.util.Map.class);
-//
-//        if (resp == null || resp.get("id") == null) {
-//            throw new IllegalStateException("Instagram fetchProfile failed: empty response");
-//        }
-//        String id = String.valueOf(resp.get("id"));
-//        String username = resp.get("username") != null ? String.valueOf(resp.get("username")) : null;
-//        String name = resp.get("name") != null ? String.valueOf(resp.get("name")) : username;
-//        String pictureUrl = resp.get("profile_picture_url") != null ? String.valueOf(resp.get("profile_picture_url")) : null;
-//        return new SocialProfile(id, username, name, pictureUrl);
-//    }
+
 
     @Override
-    public SocialProfile fetchProfile(String accessToken) {
-        // Step 1: Get user’s connected pages
+    public List<SocialProfile> fetchProfile(String accessToken) {
+        // Step 1: Get all connected Facebook pages
         URI pagesUri = UriComponentsBuilder.fromHttpUrl("https://graph.facebook.com/v19.0/me/accounts")
                 .queryParam("access_token", accessToken)
                 .build(true)
@@ -149,52 +129,61 @@ public class InstagramOAuthProvider implements OAuthProvider {
             throw new IllegalStateException("No connected Facebook pages found for user");
         }
 
-        // Step 2: Get the Instagram business account linked to the first page
-        String pageId = pages.data.get(0).id;
-        URI igUri = UriComponentsBuilder.fromHttpUrl("https://graph.facebook.com/v19.0/" + pageId)
-                .queryParam("fields", "instagram_business_account")
-                .queryParam("access_token", accessToken)
-                .build(true)
-                .toUri();
+        java.util.List<SocialProfile> connectedProfiles = new java.util.ArrayList<>();
 
-        IgAccountResponse igResp = restClient.get()
-                .uri(igUri)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body(IgAccountResponse.class);
+        for (PagesResponse.PageData page : pages.data) {
+            URI igUri = UriComponentsBuilder.fromHttpUrl("https://graph.facebook.com/v19.0/" + page.id)
+                    .queryParam("fields", "instagram_business_account")
+                    .queryParam("access_token", accessToken)
+                    .build(true)
+                    .toUri();
 
-        if (igResp == null || igResp.instagram_business_account == null) {
-            throw new IllegalStateException("No Instagram business account linked to page");
+            IgAccountResponse igResp = restClient.get()
+                    .uri(igUri)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(IgAccountResponse.class);
+
+            if (igResp == null || igResp.instagram_business_account == null) {
+                continue; // skip pages without IG account
+            }
+
+            String igId = igResp.instagram_business_account.id;
+
+            URI profileUri = UriComponentsBuilder.fromHttpUrl("https://graph.facebook.com/v19.0/" + igId)
+                    .queryParam("fields", "id,username,name,profile_picture_url")
+                    .queryParam("access_token", accessToken)
+                    .build(true)
+                    .toUri();
+
+            GraphProfileResponse resp = restClient.get()
+                    .uri(profileUri)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(GraphProfileResponse.class);
+
+            if (resp != null && resp.id != null) {
+                connectedProfiles.add(
+                        new SocialProfile(resp.id, resp.username, resp.name, resp.profile_picture_url)
+                );
+            }
         }
 
-        String igId = igResp.instagram_business_account.id;
-
-        // Step 3: Fetch profile details using that IG business ID
-        URI profileUri = UriComponentsBuilder.fromHttpUrl("https://graph.facebook.com/v19.0/" + igId)
-                .queryParam("fields", "id,username,name,profile_picture_url")
-                .queryParam("access_token", accessToken)
-                .build(true)
-                .toUri();
-
-        GraphProfileResponse resp = restClient.get()
-                .uri(profileUri)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body(GraphProfileResponse.class);
-
-        if (resp == null || resp.id == null) {
-            throw new IllegalStateException("Failed to fetch Instagram business profile");
+        if (connectedProfiles.isEmpty()) {
+            throw new IllegalStateException("No Instagram business accounts linked to user's pages");
         }
 
-//        return new SocialProfile(
-//                resp.id,
-//                resp.username,
-//                resp.name,
-//                resp.profile_picture_url,
-//                "INSTAGRAM"
-//        );
-        return new SocialProfile(resp.id, resp.username, resp.name, resp.profile_picture_url);
+        // You can either:
+        // 1. Return the first (like before):
+        // return connectedProfiles.get(0);
+        //
+        // or
+        // 2. Return all in a wrapper class if you want multiple:
+        // return new MultiSocialProfileResponse(connectedProfiles);
+
+        return connectedProfiles;
     }
+
 
     // Helper DTOs
     private static class PagesResponse {

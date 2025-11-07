@@ -6,14 +6,19 @@ import com.arka.socialbug.repository.SocialConnectionRepository;
 import com.arka.socialbug.repository.UserRepository;
 import com.arka.socialbug.service.oauth.OAuthProvider;
 import com.arka.socialbug.service.oauth.OAuthProviderFactory;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -35,35 +40,60 @@ public class SocialConnectionService {
     }
 
     @Transactional
-    public SocialConnectionResponse handleCallback(SocialPlatform platform, ConnectRequest req) {
+    public List<SocialConnectionResponse> handleCallback(SocialPlatform platform, ConnectRequest req) {
+        // 1. Get the provider and exchange the code for tokens
         OAuthProvider provider = providerFactory.get(platform);
         TokenResponse token = provider.exchangeCode(req.getCode(), req.getRedirectUri());
-        SocialProfile profile = provider.fetchProfile(token.getAccessToken());
 
+        // 2. Fetch all profiles from the provider
+        List<SocialProfile> profiles = provider.fetchProfile(token.getAccessToken());
+
+        // 3. Get current logged-in user
         User currentUser = getCurrentUser();
-        SocialConnection conn = connectionRepository
-                .findByUser_IdAndPlatform(currentUser.getId(), platform)
-                .orElseGet(SocialConnection::new);
 
-        conn.setUser(currentUser);
-        conn.setPlatform(platform);
-        conn.setAccessToken(token.getAccessToken());
-        conn.setRefreshToken(token.getRefreshToken());
-        conn.setTokenType(token.getTokenType());
-        conn.setScopes(token.getScope());
-        conn.setExpiresAt(Instant.now().plusSeconds(token.getExpiresIn()));
-        conn.setStatus(SocialConnectionStatus.CONNECTED);
+        // 4. Prepare response list
+        List<SocialConnectionResponse> connections = new ArrayList<>();
 
-        if (profile != null) {
+        for (SocialProfile profile : profiles) {
+            if (profile == null || profile.getExternalId() == null) {
+                continue; // skip invalid profiles
+            }
+
+            // 5. Try to find an existing connection
+            Optional<SocialConnection> optionalConn = connectionRepository
+                    .findByUserAndPlatformAndExternalUserId(currentUser, platform, profile.getExternalId());
+
+            SocialConnection conn = optionalConn.orElseGet(SocialConnection::new);
+
+            // 6. Set/Update connection details
+            conn.setUser(currentUser);
+            conn.setPlatform(platform);
+            conn.setAccessToken(token.getAccessToken());
+            conn.setRefreshToken(token.getRefreshToken());
+            conn.setTokenType(token.getTokenType());
+            conn.setScopes(token.getScope());
+            conn.setExpiresAt(Instant.now().plusSeconds(token.getExpiresIn()));
+            conn.setStatus(SocialConnectionStatus.CONNECTED);
+
             conn.setExternalUserId(profile.getExternalId());
             conn.setUsername(profile.getUsername());
             conn.setDisplayName(profile.getDisplayName());
             conn.setProfilePictureUrl(profile.getPictureUrl());
+
+            // 7. Save the connection safely
+            try {
+                SocialConnection saved = connectionRepository.save(conn);
+                connections.add(map(saved));
+            } catch (Exception e) {
+                // Optional: log and skip duplicates
+                System.out.println("Could not save connection for externalId="
+                        + profile.getExternalId() + " due to " + e.getMessage());
+            }
         }
 
-        SocialConnection saved = connectionRepository.save(conn);
-        return map(saved);
+        return connections;
     }
+
 
     @Transactional(readOnly = true)
     public List<SocialConnectionResponse> listMine() {
